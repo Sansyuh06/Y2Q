@@ -1,0 +1,4 @@
+CONNECTED(00000004)
+---
+Certificate chain
+ 0 s:CN=broken.example
