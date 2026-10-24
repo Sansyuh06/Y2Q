@@ -10,13 +10,14 @@ Y2Q is a read-only command-line scanner that inspects TLS 1.3 key-exchange negot
 - Does not probe multiple vantage points or non-TLS services.
 
 ## Install and Usage
+Requires OpenSSL 3.5+ for native ML-KEM. On older builds the forced-group test fails and all results are INCONCLUSIVE.
 ```sh
 pip install .
 y2q scan example.com
 y2q scan --file targets.txt --json
 ```
 
-Observed run against example.com (Windows 11, OpenSSL 3.5.7, Python 3.12.0):
+Observed run (Windows 11, OpenSSL 3.5.7, Python 3.12.0):
 ```
 Y2Q  example.com:443
 scanner : OpenSSL 3.5.7
@@ -28,12 +29,12 @@ verdict  HYBRID_NEGOTIATED
 ```
 
 ## Lab Harness
+Assertion: classical must negotiate X25519; hybrid must negotiate X25519MLKEM768.
 ```sh
 docker compose -f lab/docker-compose.yml up -d
-y2q scan localhost -p 8443
-y2q scan localhost -p 9443
+y2q scan localhost -p 8443  # default: X25519 (CLASSICAL_ONLY, forced_hybrid REJECTED)
+y2q scan localhost -p 9443  # default: X25519MLKEM768 (HYBRID_NEGOTIATED, forced_hybrid accepted)
 ```
-Note: Requires an nginx build linked against OpenSSL 3.5+ with Docker running.
 
 ## Limitations
 Single vantage point, key exchange only, single OpenSSL client build, no certificate or cipher-suite assessment, not a CBOM, no entropy visibility.

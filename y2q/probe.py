@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import List, Optional
@@ -51,7 +52,6 @@ def get_openssl_version(openssl_bin: Optional[str] = None) -> str:
         )
         out = proc.stdout.strip()
         if out:
-            # e.g., "OpenSSL 3.5.7 9 Jun 2026 ..." -> "OpenSSL 3.5.7"
             parts = out.split()
             if len(parts) >= 2:
                 return f"{parts[0]} {parts[1]}"
@@ -59,6 +59,22 @@ def get_openssl_version(openssl_bin: Optional[str] = None) -> str:
         return "OpenSSL (unknown version)"
     except Exception as err:
         return f"OpenSSL error: {err}"
+
+
+def check_native_mlkem_support(openssl_bin: Optional[str] = None) -> bool:
+    bin_path = openssl_bin or find_openssl_binary()
+    try:
+        proc = subprocess.run(
+            [bin_path, "list", "-kem-algorithms"],
+            capture_output=True,
+            text=True,
+            check=False,
+            shell=False,
+            timeout=5.0,
+        )
+        return "X25519MLKEM768" in proc.stdout or "MLKEM768" in proc.stdout
+    except Exception:
+        return False
 
 
 def build_s_client_args(
@@ -99,7 +115,11 @@ def execute_probe(
     connect_timeout: float = CONNECT_TIMEOUT_SEC,
     total_timeout: float = TOTAL_TIMEOUT_SEC,
 ) -> ProbeExecutionResult:
-    """Execute openssl s_client with strict timeouts and process reaping."""
+    """Execute openssl s_client with strict timeouts and process reaping.
+
+    Enforces a 5s connect timeout (monitoring stdout/stderr for CONNECTED)
+    and a 10s total execution deadline.
+    """
     args = build_s_client_args(openssl_bin, target, test_type)
 
     start_time = time.monotonic()
@@ -121,77 +141,91 @@ def execute_probe(
             timeout_reason=None,
         )
 
-    # Monitor connect deadline (5s) and total deadline (10s)
-    connected_detected = False
     stdout_chunks: List[str] = []
     stderr_chunks: List[str] = []
+    connected_event = threading.Event()
 
-    try:
-        # Use communicate with total timeout deadline
-        # For connect timeout detection: on fast networks s_client completes within 5s.
-        # If it takes > 5s and has not reached CONNECTED, we check.
+    def read_stdout():
         try:
-            # We first wait up to connect_timeout for initial completion or connection
-            stdout_text, stderr_text = proc.communicate(timeout=connect_timeout)
-            return ProbeExecutionResult(
-                stdout=stdout_text or "",
-                stderr=stderr_text or "",
-                exit_code=proc.returncode if proc.returncode is not None else 0,
-                is_timeout=False,
-            )
-        except subprocess.TimeoutExpired:
-            # Process is still running after connect_timeout.
-            # Check if it has connected by inspecting partial output if possible,
-            # or wait remaining time up to total_timeout.
-            remaining = total_timeout - connect_timeout
-            if remaining <= 0:
-                proc.kill()
-                proc.wait()
-                return ProbeExecutionResult(
-                    stdout="",
-                    stderr="Connection timed out",
-                    exit_code=1,
-                    is_timeout=True,
-                    timeout_reason="timeout",
-                )
+            if proc.stdout:
+                for line in iter(proc.stdout.readline, ""):
+                    stdout_chunks.append(line)
+                    if "CONNECTED" in line:
+                        connected_event.set()
+        finally:
+            if proc.stdout:
+                proc.stdout.close()
 
-            try:
-                stdout_text, stderr_text = proc.communicate(timeout=remaining)
-                # If "CONNECTED" is not in stdout, connect timed out
-                if "CONNECTED" not in (stdout_text or ""):
-                    return ProbeExecutionResult(
-                        stdout=stdout_text or "",
-                        stderr=stderr_text or "",
-                        exit_code=proc.returncode if proc.returncode is not None else 1,
-                        is_timeout=True,
-                        timeout_reason="timeout",
-                    )
-                return ProbeExecutionResult(
-                    stdout=stdout_text or "",
-                    stderr=stderr_text or "",
-                    exit_code=proc.returncode if proc.returncode is not None else 0,
-                    is_timeout=False,
-                )
-            except subprocess.TimeoutExpired:
-                # Exceeded total_timeout: kill and reap child
-                proc.kill()
-                proc.wait()
-                return ProbeExecutionResult(
-                    stdout="",
-                    stderr="Total execution deadline exceeded",
-                    exit_code=1,
-                    is_timeout=True,
-                    timeout_reason="timeout",
-                )
-    except Exception as err:
+    def read_stderr():
         try:
+            if proc.stderr:
+                for line in iter(proc.stderr.readline, ""):
+                    stderr_chunks.append(line)
+                    if "CONNECTED" in line:
+                        connected_event.set()
+        finally:
+            if proc.stderr:
+                proc.stderr.close()
+
+    t_out = threading.Thread(target=read_stdout, daemon=True)
+    t_err = threading.Thread(target=read_stderr, daemon=True)
+    t_out.start()
+    t_err.start()
+
+    # 1. Check connect timeout milestone (5s)
+    connected = connected_event.wait(timeout=connect_timeout)
+    if not connected:
+        if proc.poll() is None:
+            # Process is still running and has not established TCP connect within 5s
             proc.kill()
             proc.wait()
-        except Exception:
-            pass
-        return ProbeExecutionResult(
-            stdout="",
-            stderr=str(err),
-            exit_code=1,
-            is_timeout=False,
-        )
+            t_out.join(timeout=0.5)
+            t_err.join(timeout=0.5)
+            return ProbeExecutionResult(
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                exit_code=1,
+                is_timeout=True,
+                timeout_reason="connect timeout",
+            )
+
+    # 2. Check total execution deadline (10s)
+    remaining = total_timeout - (time.monotonic() - start_time)
+    if remaining > 0:
+        try:
+            proc.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            t_out.join(timeout=0.5)
+            t_err.join(timeout=0.5)
+            return ProbeExecutionResult(
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                exit_code=1,
+                is_timeout=True,
+                timeout_reason="total timeout",
+            )
+    else:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+            t_out.join(timeout=0.5)
+            t_err.join(timeout=0.5)
+            return ProbeExecutionResult(
+                stdout="".join(stdout_chunks),
+                stderr="".join(stderr_chunks),
+                exit_code=1,
+                is_timeout=True,
+                timeout_reason="total timeout",
+            )
+
+    t_out.join(timeout=1.0)
+    t_err.join(timeout=1.0)
+
+    return ProbeExecutionResult(
+        stdout="".join(stdout_chunks),
+        stderr="".join(stderr_chunks),
+        exit_code=proc.returncode if proc.returncode is not None else 0,
+        is_timeout=False,
+    )

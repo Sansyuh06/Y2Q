@@ -1,0 +1,40 @@
+# Top CDNs and Technology Platforms
+cloudflare.com
+google.com
+youtube.com
+wikipedia.org
+github.com
+microsoft.com
+apple.com
+amazon.com
+netflix.com
+meta.com
+reddit.com
+x.com
+linkedin.com
+spotify.com
+
+# Banking and Financial Institutions
+hdfcbank.com
+icicibank.com
+sbi.co.in
+jpmorganchase.com
+bankofamerica.com
+wellsfargo.com
+citigroup.com
+hsbc.com
+barclays.co.uk
+rbi.org.in
+
+# Standards, Government, and Academic Institutions
+nist.gov
+cisa.gov
+mit.edu
+stanford.edu
+ox.ac.uk
+ietf.org
+iana.org
+root-servers.org
+mozilla.org
+debian.org
+python.org

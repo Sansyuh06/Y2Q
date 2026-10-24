@@ -16,6 +16,7 @@ from y2q.classify import (
 )
 from y2q.parse import parse_openssl_output
 from y2q.probe import (
+    check_native_mlkem_support,
     execute_probe,
     find_openssl_binary,
     get_openssl_version,
@@ -276,6 +277,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             return 2
 
         openssl_version_str = get_openssl_version(openssl_bin)
+        if not check_native_mlkem_support(openssl_bin):
+            sys.stderr.write("warning: OpenSSL build lacks native X25519MLKEM768 support; hybrid tests may return INCONCLUSIVE\n")
 
         # Batch mode
         if args.target_file:
