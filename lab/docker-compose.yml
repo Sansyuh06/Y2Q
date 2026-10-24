@@ -1,0 +1,18 @@
+services:
+  classical:
+    image: nginx:alpine
+    container_name: y2q-classical
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./nginx-classical.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+
+  hybrid:
+    image: nginx:alpine
+    container_name: y2q-hybrid
+    ports:
+      - "9443:8443"
+    volumes:
+      - ./nginx-hybrid.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
