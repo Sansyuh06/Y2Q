@@ -143,6 +143,25 @@ def test_classify_tls12_downgrade():
     assert "downgraded to TLSv1.2" in res.reason
 
 
+def test_classify_alert_70_protocol_version():
+    parsed = ParsedOutput(
+        group=None,
+        tls_version=None,
+        cipher=None,
+        alert_number=70,
+        alert_description="protocol version",
+        error_message="tls alert: protocol version",
+        raw_errors=["ssl/tls alert protocol version:SSL alert number 70"],
+    )
+    res = classify_test_result(parsed, test_name="default")
+    assert res.outcome == TestOutcome.INCONCLUSIVE
+    assert res.error_category == "tls_version"
+    assert "protocol version" in res.reason
+
+
+
+
+
 def test_verdict_derivation():
     # 1. Default negotiated hybrid
     res_hybrid = TestResult(

@@ -52,17 +52,18 @@ def parse_openssl_output(stdout: str, stderr: str = "") -> ParsedOutput:
         if c_val and c_val != "(NONE)":
             cipher = c_val
 
-    # 3. Parse protocol / TLS version
+    # 3. Parse protocol / TLS version (only if handshake established a cipher or group)
     tls_version: Optional[str] = None
-    m_proto = RE_PROTOCOL.search(combined)
-    if m_proto:
-        p_val = m_proto.group(1).strip()
-        if p_val and p_val != "(NONE)":
-            tls_version = p_val
-    if tls_version is None:
-        m_new_proto = re.search(r"New,\s*(TLSv[0-9.]+),", combined)
-        if m_new_proto:
-            tls_version = m_new_proto.group(1).strip()
+    if cipher is not None or group is not None:
+        m_proto = RE_PROTOCOL.search(combined)
+        if m_proto:
+            p_val = m_proto.group(1).strip()
+            if p_val and p_val != "(NONE)":
+                tls_version = p_val
+        if tls_version is None:
+            m_new_proto = re.search(r"New,\s*(TLSv[0-9.]+),", combined)
+            if m_new_proto:
+                tls_version = m_new_proto.group(1).strip()
 
     # 4. Parse alert details
     alert_number: Optional[int] = None

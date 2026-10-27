@@ -36,6 +36,12 @@ y2q scan localhost -p 8443  # default: X25519 (CLASSICAL_ONLY, forced_hybrid REJ
 y2q scan localhost -p 9443  # default: X25519MLKEM768 (HYBRID_NEGOTIATED, forced_hybrid accepted)
 ```
 
+## Survey
+35 public HTTPS endpoints, single vantage point, key exchange only.
+Convenience sample, not a representative rate.
+
+HYBRID_NEGOTIATED 22 · CLASSICAL_ONLY 9 · INCONCLUSIVE 4
+
 ## Limitations
 Single vantage point, key exchange only, single OpenSSL client build, no certificate or cipher-suite assessment, not a CBOM, no entropy visibility.
 
@@ -43,3 +49,4 @@ Single vantage point, key exchange only, single OpenSSL client build, no certifi
 - Exit 0: All scanned targets yielded a conclusive verdict (HYBRID_NEGOTIATED or CLASSICAL_ONLY).
 - Exit 2: Any target produced INCONCLUSIVE or had invalid input.
 - Formats: Single target emits text or single JSON object with `--json`. Batch (`--file`) emits CSV by default or JSON Lines (one JSON object per line) with `--json`.
+

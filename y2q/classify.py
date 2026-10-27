@@ -152,18 +152,28 @@ def classify_test_result(
             evidence=evidence_str,
         )
 
-    # 2. Generic handshake failure (alert 40 or generic handshake failure)
-    # A generic handshake_failure alert is weak evidence on its own.
-    # It is only sufficient for REJECTED when forced_classical to the same host
-    # succeeded in the same run as a control.
+    # 2. Check protocol version rejection (Alert 70: protocol_version)
+    if parsed.alert_number == 70 or "protocol version" in err_lower:
+        return TestResult(
+            group=None,
+            tls_version=parsed.tls_version,
+            cipher=parsed.cipher,
+            outcome=TestOutcome.INCONCLUSIVE,
+            error_category="tls_version",
+            reason="server rejected TLS 1.3 protocol version (alert 70)",
+            evidence=f"SSL alert number {parsed.alert_number or 70}",
+        )
+
+    # 3. Generic handshake failure or other TLS alerts
     is_handshake_failure = (
-        parsed.alert_number == 40
+        parsed.alert_number is not None
         or "handshake failure" in err_lower
         or "handshake_failure" in combined_errors
-        or (parsed.alert_number is not None and parsed.alert_number in (40, 47, 71, 109))
+        or parsed.alert_description is not None
     )
 
     if is_handshake_failure:
+        alert_desc_str = parsed.alert_description or f"alert {parsed.alert_number or 'unspecified'}"
         evidence_str = (
             f"SSL alert number {parsed.alert_number}"
             if parsed.alert_number
@@ -177,7 +187,7 @@ def classify_test_result(
                     cipher=parsed.cipher,
                     outcome=TestOutcome.REJECTED,
                     error_category="tls_alert",
-                    reason="handshake failure with successful classical control",
+                    reason=f"{alert_desc_str} with successful classical control",
                     evidence=evidence_str,
                 )
             else:
@@ -187,7 +197,7 @@ def classify_test_result(
                     cipher=parsed.cipher,
                     outcome=TestOutcome.INCONCLUSIVE,
                     error_category="tls_alert",
-                    reason="weak handshake failure without successful classical control",
+                    reason=f"weak {alert_desc_str} without successful classical control",
                     evidence=None,
                 )
 
@@ -197,8 +207,8 @@ def classify_test_result(
             cipher=parsed.cipher,
             outcome=TestOutcome.INCONCLUSIVE,
             error_category="tls_alert",
-            reason=f"handshake failure (alert {parsed.alert_number or 'unspecified'})",
-            evidence=None,
+            reason=f"handshake failure ({alert_desc_str})",
+            evidence=evidence_str,
         )
 
     # No recognizable group or specific alert
