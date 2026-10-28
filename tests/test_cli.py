@@ -75,6 +75,8 @@ def test_csv_header_and_column_order():
             "target": "example.com",
             "port": 443,
             "timestamp": "2026-10-27T14:22:01Z",
+            "run_id": "run_test_123",
+            "raw_sha256": "abcdef123456",
             "scanner": {"openssl_version": "OpenSSL 3.5.7"},
             "default": {
                 "group": "X25519MLKEM768",
@@ -82,20 +84,37 @@ def test_csv_header_and_column_order():
                 "cipher": "TLS_AES_256_GCM_SHA384",
                 "outcome": "NEGOTIATED",
                 "error_category": None,
+                "duration_ms": 45,
             },
-            "forced_hybrid": {"group": "X25519MLKEM768", "outcome": "NEGOTIATED"},
-            "forced_classical": {"group": "X25519", "outcome": "NEGOTIATED"},
+            "forced_hybrid": {
+                "group": "X25519MLKEM768",
+                "outcome": "NEGOTIATED",
+                "duration_ms": 50,
+            },
+            "forced_classical": {
+                "group": "X25519",
+                "outcome": "NEGOTIATED",
+                "duration_ms": 40,
+            },
             "verdict": "HYBRID_NEGOTIATED",
+            "failed_test": None,
+            "error_category": None,
         }
     ]
     csv_text = format_batch_csv(records)
     lines = csv_text.strip().split("\n")
     expected_header = (
         "target,port,default_group,default_outcome,forced_hybrid_outcome,"
-        "forced_classical_outcome,tls_version,cipher,verdict,error_category,timestamp"
+        "forced_classical_outcome,tls_version,cipher,verdict,failed_test,"
+        "error_category,default_duration_ms,forced_hybrid_duration_ms,"
+        "forced_classical_duration_ms,raw_sha256,run_id,timestamp"
     )
     assert lines[0] == expected_header
-    assert lines[1].startswith("example.com,443,X25519MLKEM768,NEGOTIATED,NEGOTIATED,NEGOTIATED,TLSv1.3,TLS_AES_256_GCM_SHA384,HYBRID_NEGOTIATED,,2026-10-27T14:22:01Z")
+    assert lines[1] == (
+        "example.com,443,X25519MLKEM768,NEGOTIATED,NEGOTIATED,NEGOTIATED,"
+        "TLSv1.3,TLS_AES_256_GCM_SHA384,HYBRID_NEGOTIATED,,,45,50,40,abcdef123456,"
+        "run_test_123,2026-10-27T14:22:01Z"
+    )
 
 
 def test_deterministic_sort_order():

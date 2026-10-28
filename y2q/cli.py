@@ -1,9 +1,11 @@
 import argparse
 import csv
+import hashlib
 import io
 import json
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -36,6 +38,7 @@ def scan_single_target(
     target: Target,
     openssl_bin: str,
     openssl_ver_str: str,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     timestamp = get_current_timestamp()
 
@@ -77,14 +80,48 @@ def scan_single_target(
     # Verdict derived strictly from default test
     verdict = derive_target_verdict(res_default)
 
+    # Attribute failed_test accurately
+    failed_test: Optional[str] = None
+    error_cat: Optional[str] = None
+    if res_default.outcome != TestOutcome.NEGOTIATED:
+        failed_test = "default"
+        error_cat = res_default.error_category
+    elif res_hybrid.outcome != TestOutcome.NEGOTIATED:
+        failed_test = "forced_hybrid"
+        error_cat = res_hybrid.error_category
+    elif res_classical.outcome != TestOutcome.NEGOTIATED:
+        failed_test = "forced_classical"
+        error_cat = res_classical.error_category
+
+    # Provenance: concatenated raw openssl output sha256
+    raw_concat = (
+        probe_default.stdout + probe_default.stderr +
+        probe_classical.stdout + probe_classical.stderr +
+        probe_hybrid.stdout + probe_hybrid.stderr
+    )
+    raw_sha256 = hashlib.sha256(raw_concat.encode("utf-8", errors="replace")).hexdigest()
+
+    def_dict = res_default.to_dict()
+    def_dict["duration_ms"] = probe_default.duration_ms
+
+    hyb_dict = res_hybrid.to_dict()
+    hyb_dict["duration_ms"] = probe_hybrid.duration_ms
+
+    cla_dict = res_classical.to_dict()
+    cla_dict["duration_ms"] = probe_classical.duration_ms
+
     return {
         "target": target.host,
         "port": target.port,
         "timestamp": timestamp,
+        "run_id": run_id or f"run_{timestamp}",
         "scanner": {"openssl_version": openssl_ver_str},
-        "default": res_default.to_dict(),
-        "forced_hybrid": res_hybrid.to_dict(),
-        "forced_classical": res_classical.to_dict(),
+        "raw_sha256": raw_sha256,
+        "default": def_dict,
+        "forced_hybrid": hyb_dict,
+        "forced_classical": cla_dict,
+        "failed_test": failed_test,
+        "error_category": error_cat,
         "verdict": verdict.value,
     }
 
@@ -94,6 +131,7 @@ def make_invalid_target_record(
     error_msg: str,
     openssl_ver_str: str,
     default_port: int = 443,
+    run_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     timestamp = get_current_timestamp()
     invalid_res = TestResult(
@@ -105,15 +143,20 @@ def make_invalid_target_record(
         reason=error_msg,
         evidence=None,
     ).to_dict()
+    invalid_res["duration_ms"] = 0
 
     return {
         "target": raw_target,
         "port": default_port,
         "timestamp": timestamp,
+        "run_id": run_id or f"run_{timestamp}",
         "scanner": {"openssl_version": openssl_ver_str},
+        "raw_sha256": hashlib.sha256(raw_target.encode("utf-8")).hexdigest(),
         "default": invalid_res,
         "forced_hybrid": invalid_res,
         "forced_classical": invalid_res,
+        "failed_test": "default",
+        "error_category": "invalid_input",
         "verdict": TargetVerdict.INCONCLUSIVE.value,
     }
 
@@ -177,7 +220,13 @@ def format_batch_csv(records: List[Dict[str, Any]]) -> str:
         "tls_version",
         "cipher",
         "verdict",
+        "failed_test",
         "error_category",
+        "default_duration_ms",
+        "forced_hybrid_duration_ms",
+        "forced_classical_duration_ms",
+        "raw_sha256",
+        "run_id",
         "timestamp",
     ]
     writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator="\n")
@@ -187,13 +236,6 @@ def format_batch_csv(records: List[Dict[str, Any]]) -> str:
         def_test = r.get("default", {})
         hyb_test = r.get("forced_hybrid", {})
         cla_test = r.get("forced_classical", {})
-
-        # error_category prioritizes default test's category, or hybrid/classical if default was inconclusive
-        err_cat = (
-            def_test.get("error_category")
-            or hyb_test.get("error_category")
-            or cla_test.get("error_category")
-        )
 
         row = {
             "target": r.get("target"),
@@ -205,7 +247,13 @@ def format_batch_csv(records: List[Dict[str, Any]]) -> str:
             "tls_version": def_test.get("tls_version"),
             "cipher": def_test.get("cipher"),
             "verdict": r.get("verdict"),
-            "error_category": err_cat,
+            "failed_test": r.get("failed_test"),
+            "error_category": r.get("error_category"),
+            "default_duration_ms": def_test.get("duration_ms"),
+            "forced_hybrid_duration_ms": hyb_test.get("duration_ms"),
+            "forced_classical_duration_ms": cla_test.get("duration_ms"),
+            "raw_sha256": r.get("raw_sha256"),
+            "run_id": r.get("run_id"),
             "timestamp": r.get("timestamp"),
         }
         writer.writerow(row)
@@ -220,6 +268,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command")
 
+    # Scanner subcommand
     scan_parser = subparsers.add_parser("scan", help="Scan target(s) for TLS 1.3 key exchange groups")
     scan_parser.add_argument(
         "target",
@@ -245,6 +294,81 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit JSON output to stdout",
     )
 
+    # HNDL subcommand
+    hndl_parser = subparsers.add_parser(
+        "hndl",
+        help="Execute controlled HNDL experiment (discrete-log circuit over Z_32)",
+    )
+    hndl_parser.add_argument(
+        "--prepare",
+        action="store_true",
+        help="Generate synthetic case files (challenge.json, truth.json)",
+    )
+    hndl_parser.add_argument(
+        "--challenge",
+        default=None,
+        help="Path to challenge.json for attack execution",
+    )
+    hndl_parser.add_argument(
+        "--backend",
+        choices=["simulator", "ibm"],
+        default="simulator",
+        help="Backend to execute circuit on (default: simulator)",
+    )
+    hndl_parser.add_argument(
+        "--backend-name",
+        default=None,
+        help="Specific IBM backend name",
+    )
+    hndl_parser.add_argument(
+        "--shots",
+        type=int,
+        default=4096,
+        help="Shot count (default: 4096)",
+    )
+    hndl_parser.add_argument(
+        "--confirm-ibm-hardware",
+        action="store_true",
+        help="Explicit confirmation required to submit jobs to IBM hardware",
+    )
+    hndl_parser.add_argument(
+        "--out",
+        "-o",
+        default="artifacts/hndl/case_01",
+        help="Output directory for generated cases or artifacts",
+    )
+    hndl_parser.add_argument(
+        "--case-id",
+        default=None,
+        help="Optional case identifier",
+    )
+    hndl_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit JSON output to stdout",
+    )
+
+    # Report subcommand
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Generate unified evidence report combining scan and HNDL experimental results",
+    )
+    report_parser.add_argument(
+        "--scan",
+        required=True,
+        help="Path to scan results (JSON, JSONL, or CSV)",
+    )
+    report_parser.add_argument(
+        "--hndl",
+        required=True,
+        help="Path to HNDL result JSON artifact",
+    )
+    report_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit only JSON object to stdout",
+    )
+
     return parser
 
 
@@ -255,6 +379,65 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.command is None:
         parser.print_help(sys.stderr)
         return 2
+
+    if args.command == "hndl":
+        try:
+            if args.prepare:
+                from y2q.hndl.prepare import generate_case
+
+                c_file, t_file = generate_case(output_dir=args.out, case_id=args.case_id)
+                sys.stdout.write(f"Generated challenge: {c_file}\nGenerated truth: {t_file}\n")
+                return 0
+
+            if not args.challenge:
+                sys.stderr.write("Error: either --prepare or --challenge must be specified for hndl\n")
+                return 2
+
+            from y2q.hndl.attack import run_hndl_attack
+
+            attack_result = run_hndl_attack(
+                challenge_path=args.challenge,
+                backend=args.backend,
+                backend_name=args.backend_name,
+                shots=args.shots,
+                confirm_ibm_hardware=args.confirm_ibm_hardware,
+            )
+
+            if args.json:
+                sys.stdout.write(json.dumps(attack_result, indent=2) + "\n")
+            else:
+                sys.stdout.write(f"HNDL Attack Run : {attack_result['run_id']}\n")
+                sys.stdout.write(f"Source          : {attack_result['source']}\n")
+                sys.stdout.write(f"Backend         : {attack_result['backend_name']}\n")
+                sys.stdout.write(f"Candidate scalar: {attack_result['candidate_k']}\n")
+                sys.stdout.write(f"Candidate status: {attack_result['candidate_status']}\n")
+                sys.stdout.write(f"Public relation : {attack_result['public_relation_status']}\n")
+                sys.stdout.write(f"Decrypted       : {attack_result['decrypted']}\n")
+                sys.stdout.write(f"SHA256 Match    : {attack_result['sha256_match']}\n")
+                sys.stdout.write(f"Evidence file   : {attack_result['evidence_file']}\n")
+
+            return 0 if attack_result.get("decrypted") else 2
+        except Exception as exc:
+            sys.stderr.write(f"Error executing HNDL: {exc}\n")
+            return 2
+
+    if args.command == "report":
+        try:
+            from y2q.report import build_unified_report, format_terminal_summary
+
+            report_obj = build_unified_report(args.scan, args.hndl)
+            json_str = json.dumps(report_obj, indent=2)
+
+            if args.json:
+                sys.stdout.write(json_str + "\n")
+            else:
+                # Emit JSON object to stdout and terminal summary to stderr
+                sys.stdout.write(json_str + "\n")
+                sys.stderr.write(format_terminal_summary(report_obj) + "\n")
+            return 0
+        except Exception as exc:
+            sys.stderr.write(f"Error generating report: {exc}\n")
+            return 2
 
     if args.command == "scan":
         if args.target is None and unknown:
@@ -292,6 +475,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             parsed_lines = parse_target_lines(lines, default_port=args.port)
             records: List[Dict[str, Any]] = []
 
+            batch_run_id = f"batch_{get_current_timestamp().replace(':', '').replace('-', '')}"
             for raw_line, target_obj, err_msg in parsed_lines:
                 if target_obj is None:
                     # Invalid target line in batch: isolation means recording error without aborting
@@ -301,10 +485,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                             err_msg or "invalid input",
                             openssl_version_str,
                             default_port=args.port,
+                            run_id=batch_run_id,
                         )
                     )
                 else:
-                    record = scan_single_target(target_obj, openssl_bin, openssl_version_str)
+                    record = scan_single_target(
+                        target_obj,
+                        openssl_bin,
+                        openssl_version_str,
+                        run_id=batch_run_id,
+                    )
                     records.append(record)
 
             sorted_records = sort_records(records)

@@ -1,52 +1,44 @@
 # Y2Q
 
 ## What It Does
-Y2Q is a read-only command-line scanner that inspects TLS 1.3 key-exchange negotiation. For a given target, it performs a default handshake, a forced hybrid handshake offering X25519MLKEM768, and a forced classical control handshake offering X25519. It reports the observed key-exchange group and whether hybrid post-quantum negotiation succeeded.
+Y2Q inspects TLS 1.3 key-exchange negotiation and evaluates a controlled
+HNDL discrete-logarithm experiment. For TLS scanning, it runs a default handshake,
+a forced hybrid handshake offering X25519MLKEM768, and a forced classical control
+handshake offering X25519.
 
-## What It Does NOT Do
-- Does not assess certificate chains, signature algorithms, or cipher suites.
-- Does not claim an endpoint is quantum-safe or generate a CBOM.
-- Does not evaluate server entropy, randomness, or key storage.
-- Does not probe multiple vantage points or non-TLS services.
+## Controlled HNDL Experiment
+Module B implements a Shor-style discrete-log circuit over a cyclic group of
+order 32, encoded as integers, not an elliptic-curve implementation (arXiv:2507.10592).
+It evaluates synthetic key recovery in Z_32 without breaking real cryptography.
 
 ## Install and Usage
-Requires OpenSSL 3.5+ for native ML-KEM. On older builds the forced-group test fails and all results are INCONCLUSIVE.
+Scanner has zero runtime dependencies: `pip install .`
+Optional quantum and cryptographic extras: `pip install .[hndl]`
+
 ```sh
-pip install .
 y2q scan example.com
-y2q scan --file targets.txt --json
+y2q scan --file data/targets.txt > data/scan.csv
+y2q hndl --prepare --out artifacts/hndl/case_01
+y2q hndl --challenge artifacts/hndl/case_01/challenge.json --backend simulator
+y2q report --scan data/scan.csv --hndl artifacts/hndl/case_01/run_01.json
 ```
 
-Observed run (Windows 11, OpenSSL 3.5.7, Python 3.12.0):
-```
-Y2Q  example.com:443
-scanner : OpenSSL 3.5.7
-default          X25519MLKEM768   hybrid negotiated
-forced_hybrid    X25519MLKEM768   accepted
-forced_classical X25519           accepted
-tls      TLSv1.3  TLS_AES_256_GCM_SHA384
-verdict  HYBRID_NEGOTIATED
-```
+## Survey Dataset Provenance
+Captured 2026-10-28 between 00:15:26Z and 00:16:14Z in a single batch run from one
+scanner host vantage point using OpenSSL 3.5.7.
+Results across 35 endpoints: 22 of 35 endpoints negotiated HYBRID_NEGOTIATED,
+9 of 35 endpoints negotiated CLASSICAL_ONLY, and 4 of 35 endpoints were INCONCLUSIVE.
 
 ## Lab Harness
-Assertion: classical must negotiate X25519; hybrid must negotiate X25519MLKEM768.
-```sh
-docker compose -f lab/docker-compose.yml up -d
-y2q scan localhost -p 8443  # default: X25519 (CLASSICAL_ONLY, forced_hybrid REJECTED)
-y2q scan localhost -p 9443  # default: X25519MLKEM768 (HYBRID_NEGOTIATED, forced_hybrid accepted)
-```
-
-## Survey
-35 public HTTPS endpoints, single vantage point, key exchange only.
-Convenience sample, not a representative rate.
-
-HYBRID_NEGOTIATED 22 · CLASSICAL_ONLY 9 · INCONCLUSIVE 4
+Docker Compose configurations are in `lab/`. Docker daemon was unreachable in this
+environment, so containerized endpoints could not be live-validated.
 
 ## Limitations
-Single vantage point, key exchange only, single OpenSSL client build, no certificate or cipher-suite assessment, not a CBOM, no entropy visibility.
+- Toy discrete-log circuit operates on Z_32 integers and cannot decrypt real X25519.
+- Breaking classical key exchange does not reveal the ML-KEM lattice shared secret.
+- No hardware quantum execution exists; simulator execution only.
+- Survey dataset reflects a single vantage point, not global adoption.
 
-## Exit Codes and Output Formats
-- Exit 0: All scanned targets yielded a conclusive verdict (HYBRID_NEGOTIATED or CLASSICAL_ONLY).
-- Exit 2: Any target produced INCONCLUSIVE or had invalid input.
-- Formats: Single target emits text or single JSON object with `--json`. Batch (`--file`) emits CSV by default or JSON Lines (one JSON object per line) with `--json`.
-
+## Exit Codes
+- Exit 0: All scanned targets conclusive, or HNDL attack successfully verified.
+- Exit 2: Any inconclusive scan target, invalid argument, or HNDL recovery failure.

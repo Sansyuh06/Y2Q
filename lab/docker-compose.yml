@@ -1,7 +1,9 @@
 services:
   classical:
-    image: nginx:alpine
+    image: nginx:1.30.3-alpine
     container_name: y2q-classical
+    command: >
+      sh -c "nginx -V 2>&1 | grep -E 'built with OpenSSL 3\.[5-9]' || { echo 'ERROR: OpenSSL 3.5+ required' >&2; exit 1; }; exec nginx -g 'daemon off;'"
     ports:
       - "8443:8443"
     volumes:
@@ -9,8 +11,10 @@ services:
       - ./certs:/etc/nginx/certs:ro
 
   hybrid:
-    image: nginx:alpine
+    image: nginx:1.30.3-alpine
     container_name: y2q-hybrid
+    command: >
+      sh -c "nginx -V 2>&1 | grep -E 'built with OpenSSL 3\.[5-9]' || { echo 'ERROR: OpenSSL 3.5+ required for ML-KEM' >&2; exit 1; }; exec nginx -g 'daemon off;'"
     ports:
       - "9443:8443"
     volumes:

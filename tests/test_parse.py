@@ -82,3 +82,13 @@ def test_parse_dns_failure():
     parsed = parse_openssl_output("", stderr=content)
     assert parsed.group is None
     assert "dns resolution failed" in (parsed.error_message or "").lower()
+
+
+def test_parse_alert_with_trailing_prose():
+    content = read_fixture("alert_with_trailing_prose.txt")
+    parsed = parse_openssl_output(content)
+    assert parsed.alert_number == 40
+    # Must match known alert name and not capture trailing prose
+    assert parsed.alert_description == "handshake_failure"
+    assert "trailing prose" not in (parsed.alert_description or "")
+

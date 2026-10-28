@@ -20,6 +20,7 @@ class ProbeExecutionResult:
     exit_code: int
     is_timeout: bool = False
     timeout_reason: Optional[str] = None
+    duration_ms: int = 0
 
 
 def find_openssl_binary() -> str:
@@ -187,6 +188,7 @@ def execute_probe(
                 exit_code=1,
                 is_timeout=True,
                 timeout_reason="connect timeout",
+                duration_ms=int((time.monotonic() - start_time) * 1000),
             )
 
     # 2. Check total execution deadline (10s)
@@ -205,6 +207,7 @@ def execute_probe(
                 exit_code=1,
                 is_timeout=True,
                 timeout_reason="total timeout",
+                duration_ms=int((time.monotonic() - start_time) * 1000),
             )
     else:
         if proc.poll() is None:
@@ -218,6 +221,7 @@ def execute_probe(
                 exit_code=1,
                 is_timeout=True,
                 timeout_reason="total timeout",
+                duration_ms=int((time.monotonic() - start_time) * 1000),
             )
 
     t_out.join(timeout=1.0)
@@ -228,4 +232,5 @@ def execute_probe(
         stderr="".join(stderr_chunks),
         exit_code=proc.returncode if proc.returncode is not None else 0,
         is_timeout=False,
+        duration_ms=int((time.monotonic() - start_time) * 1000),
     )

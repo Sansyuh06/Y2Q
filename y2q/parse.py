@@ -9,8 +9,52 @@ RE_TEMP_KEY = re.compile(
 )
 RE_CIPHER = re.compile(r"New,\s*[^,]+,\s*Cipher\s+is\s+(\S+)", re.MULTILINE)
 RE_PROTOCOL = re.compile(r"^Protocol\s*:\s*(\S+)", re.MULTILINE)
+IANA_ALERT_NAMES = {
+    0: "close_notify",
+    10: "unexpected_message",
+    20: "bad_record_mac",
+    21: "decryption_failed",
+    22: "record_overflow",
+    30: "decompression_failure",
+    40: "handshake_failure",
+    41: "no_certificate",
+    42: "bad_certificate",
+    43: "unsupported_certificate",
+    44: "certificate_revoked",
+    45: "certificate_expired",
+    46: "certificate_unknown",
+    47: "illegal_parameter",
+    48: "unknown_ca",
+    49: "access_denied",
+    50: "decode_error",
+    51: "decrypt_error",
+    60: "export_restriction",
+    70: "protocol_version",
+    71: "insufficient_security",
+    80: "internal_error",
+    86: "inappropriate_fallback",
+    90: "user_canceled",
+    100: "no_renegotiation",
+    109: "missing_extension",
+    110: "unsupported_extension",
+    112: "unrecognized_name",
+    113: "bad_certificate_status_response",
+    114: "bad_certificate_hash_value",
+    115: "unknown_psk_identity",
+    116: "certificate_required",
+    120: "no_application_protocol",
+}
+
+_KNOWN_ALERT_PHRASES = sorted(
+    list({name.replace("_", " ") for name in IANA_ALERT_NAMES.values()} | set(IANA_ALERT_NAMES.values())),
+    key=len,
+    reverse=True,
+)
 RE_ALERT_NUM = re.compile(r"SSL\s+alert\s+number\s+(\d+)", re.IGNORECASE)
-RE_ALERT_DESC = re.compile(r"alert\s+([a-z_ ]+)", re.IGNORECASE)
+RE_ALERT_DESC = re.compile(
+    r"\b(?:ssl/tls\s+alert\s+|alert\s+)(" + "|".join(re.escape(p) for p in _KNOWN_ALERT_PHRASES) + r")\b",
+    re.IGNORECASE,
+)
 RE_OPENSSL_ERROR = re.compile(
     r"(?:error:[0-9A-Fa-f]+:[^:\n]+:([^:\n]+)|([^\n]+:\s*errno=\d+))"
 )
@@ -78,6 +122,8 @@ def parse_openssl_output(stdout: str, stderr: str = "") -> ParsedOutput:
     m_alert_desc = RE_ALERT_DESC.search(combined)
     if m_alert_desc:
         alert_description = m_alert_desc.group(1).strip()
+    elif alert_number in IANA_ALERT_NAMES:
+        alert_description = IANA_ALERT_NAMES[alert_number]
 
     # 5. Parse OpenSSL errors
     raw_errors: List[str] = []
