@@ -15,6 +15,12 @@ It evaluates synthetic key recovery in Z_32 without breaking real cryptography.
 Scanner has zero runtime dependencies: `pip install .`
 Optional quantum and cryptographic extras: `pip install .[hndl]`
 
+For active local development and running the complete test suite:
+```sh
+pip install -e .[hndl]
+pytest
+```
+
 ```sh
 y2q scan example.com
 y2q scan --file data/targets.txt > data/scan.csv
