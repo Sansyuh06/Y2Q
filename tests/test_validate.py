@@ -124,3 +124,14 @@ def test_batch_line_parsing():
     assert results[3][0] == "[2001:db8::1]:8443"
     assert results[3][1].host == "2001:db8::1"
     assert results[3][2] is None
+
+
+def test_validate_hostname_edge_cases():
+    with pytest.raises(ValueError, match="cannot start or end with '-'"):
+        validate_hostname("-bad-start.com")
+    with pytest.raises(ValueError, match="cannot start or end with '-'"):
+        validate_hostname("bad-end.com-")
+    with pytest.raises(ValueError, match="contains empty label"):
+        validate_hostname("bad..com")
+    with pytest.raises(ValueError, match="exceeds 63 characters"):
+        validate_hostname("a" * 64 + ".com")
