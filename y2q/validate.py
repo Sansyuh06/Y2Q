@@ -113,6 +113,11 @@ def validate_target(target_str: str, default_port: int = 443) -> Target:
 
 
 def validate_hostname(hostname: str) -> None:
+    """Validate hostname syntax against RFC 1123 and length requirements.
+
+    Ensures overall length is within 1-253 characters, no hyphen prefix or suffix,
+    and each DNS label is 1-63 characters complying with standard DNS charset.
+    """
     if not (1 <= len(hostname) <= 253):
         raise ValueError(f"Hostname length must be 1-253 characters (got {len(hostname)})")
 
