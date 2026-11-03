@@ -152,7 +152,8 @@ def classify_test_result(
             evidence=evidence_str,
         )
 
-    # 2. Check protocol version rejection (Alert 70: protocol_version)
+    # 2. Check protocol version rejection (Alert 70: protocol_version per RFC 8446)
+    # RFC 8446 Section 6.2 alert codes: 40=handshake_failure, 70=protocol_version, 80=internal_error
     if parsed.alert_number == 70 or "protocol version" in err_lower:
         return TestResult(
             group=None,
