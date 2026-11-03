@@ -198,3 +198,18 @@ def test_verdict_derivation():
         evidence=None,
     )
     assert derive_target_verdict(res_inconclusive) == TargetVerdict.INCONCLUSIVE
+
+
+def test_classify_unrecognized_alert():
+    parsed = ParsedOutput(
+        group=None,
+        tls_version="TLSv1.3",
+        cipher=None,
+        error_message="SSL alert number 115",
+        alert_number=115,
+        alert_description=None,
+    )
+    result = classify_test_result(parsed, "default")
+    assert result.outcome == TestOutcome.INCONCLUSIVE
+    assert result.error_category == "tls_alert"
+    assert "alert 115" in (result.reason or "")
