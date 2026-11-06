@@ -23,3 +23,13 @@ docker compose -f lab/docker-compose.yml up -d
 
 Classical endpoint listens on port 8443 (`X25519:prime256v1`).
 Hybrid endpoint listens on port 9443 (`X25519MLKEM768:X25519:prime256v1`).
+
+
+## Verification Commands
+To inspect containers and test connectivity:
+
+```bash
+docker compose -f lab/docker-compose.yml ps
+openssl s_client -connect localhost:8443 </dev/null
+openssl s_client -connect localhost:9443 -groups X25519MLKEM768 </dev/null
+```
