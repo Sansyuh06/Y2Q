@@ -69,3 +69,11 @@ def test_tampered_ciphertext_fails_authentication():
 
     with pytest.raises(InvalidTag):
         decrypt_payload(key, nonce, tampered, aad=FIXED_AAD)
+
+
+def test_scalar_mult_edge_cases():
+    from y2q.hndl.toygroup import GROUP_ORDER, GENERATOR, scalar_mult
+    assert scalar_mult(0) == 0
+    assert scalar_mult(1) == GENERATOR
+    assert scalar_mult(GROUP_ORDER) == 0
+    assert scalar_mult(GROUP_ORDER + 1) == GENERATOR
