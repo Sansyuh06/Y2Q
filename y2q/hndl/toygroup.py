@@ -25,9 +25,9 @@ def scalar_mult(k: int, p: int = GENERATOR) -> int:
 
 
 def mod_inverse(a: int, m: int = GROUP_ORDER) -> int:
-    """Compute the modular inverse of a modulo m.
+    """Compute the modular inverse of a modulo m using pow(a_norm, -1, m).
 
-    Raises ValueError if a and m are not coprime.
+    Raises ValueError if math.gcd(a_norm, m) != 1 (i.e. element has no inverse in Z_m).
     """
     a_norm = a % m
     if math.gcd(a_norm, m) != 1:
