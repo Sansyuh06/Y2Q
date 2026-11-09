@@ -71,3 +71,16 @@ def test_separate_top_level_keys_in_unified_report(tmp_path):
     assert "limitations" in report
     assert "scanner_results" in report
     assert "hndl_experiment" in report
+
+
+def test_format_terminal_summary_structure(tmp_path):
+    from y2q.report import format_terminal_summary
+    scan_file = tmp_path / "empty_scan.json"
+    scan_file.write_text("[]", encoding="utf-8")
+    hndl_file = tmp_path / "empty_hndl.json"
+    hndl_file.write_text("{}", encoding="utf-8")
+    report = build_unified_report(scan_file, hndl_file)
+    summary = format_terminal_summary(report)
+    assert "Y2Q UNIFIED EVIDENCE REPORT" in summary
+    assert "[1] TLS Scanner Live Measurements" in summary
+    assert "[3] Limitations" in summary
