@@ -92,7 +92,11 @@ def build_unified_report(
     scan_path: str | Path,
     hndl_path: str | Path,
 ) -> Dict[str, Any]:
-    """Build unified report combining scanner measurements and HNDL experimental results."""
+    """Build unified report combining scanner measurements and HNDL experimental results.
+
+    Strictly separates scanner findings, experimental simulation results, provenance,
+    and plain-language technical limitations into distinct top-level keys.
+    """
     scan_data = load_scan_data(scan_path)
     hndl_data = load_hndl_data(hndl_path)
 
