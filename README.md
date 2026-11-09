@@ -48,3 +48,10 @@ environment, so containerized endpoints could not be live-validated.
 ## Exit Codes
 - Exit 0: All scanned targets conclusive, or HNDL attack successfully verified.
 - Exit 2: Any inconclusive scan target, invalid argument, or HNDL recovery failure.
+
+
+## Outcome Classification
+The scanner classifies each endpoint into one of three primary verdicts:
+- **`HYBRID_NEGOTIATED`**: Endpoint successfully negotiated a quantum-safe hybrid group (e.g., `X25519MLKEM768`).
+- **`CLASSICAL_ONLY`**: Endpoint rejected hybrid key share but completed classical key exchange (`X25519`).
+- **`INCONCLUSIVE`**: Connection failed, timed out, or rejected TLS 1.3 entirely.
