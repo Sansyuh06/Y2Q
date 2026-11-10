@@ -92,3 +92,10 @@ def test_parse_alert_with_trailing_prose():
     assert parsed.alert_description == "handshake_failure"
     assert "trailing prose" not in (parsed.alert_description or "")
 
+
+
+def test_parse_whitespace_only_output():
+    parsed = parse_openssl_output("   \n\t  \n  ")
+    assert parsed.group is None
+    assert parsed.tls_version is None
+    assert parsed.cipher is None
