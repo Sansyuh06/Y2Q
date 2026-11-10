@@ -118,6 +118,9 @@ def execute_probe(
 ) -> ProbeExecutionResult:
     """Execute openssl s_client with strict timeouts and process reaping.
 
+    Spawns s_client in an isolated subprocess, enforces connect & total deadlines,
+    and guarantees process reaping upon completion or failure.
+
     Enforces a 5s connect timeout (monitoring stdout/stderr for CONNECTED)
     and a 10s total execution deadline.
     """
