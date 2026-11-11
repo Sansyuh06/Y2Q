@@ -265,6 +265,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="y2q",
         description="TLS 1.3 key-exchange scanner offering X25519MLKEM768 hybrid detection.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""examples:
+  y2q scan example.com
+  y2q scan --file data/targets.txt > data/scan.csv
+  y2q hndl --prepare --out artifacts/case_01
+  y2q report --scan data/scan.csv
+""",
     )
     subparsers = parser.add_subparsers(dest="command")
 
